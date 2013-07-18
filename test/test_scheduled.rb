@@ -35,7 +35,7 @@ class TestScheduled < MiniTest::Unit::TestCase
         poller = Sidekiq::Scheduled::Poller.new
         poller.poll
         poller.terminate
-        
+
         assert_equal [error_1], conn.lrange("queue:queue_1", 0, -1)
         assert_equal [error_2], conn.lrange("queue:queue_2", 0, -1)
         assert_equal [error_3], conn.zrange("retry", 0, -1)
@@ -43,6 +43,21 @@ class TestScheduled < MiniTest::Unit::TestCase
         assert_equal [future_2], conn.lrange("queue:queue_5", 0, -1)
         assert_equal [future_3], conn.zrange("schedule", 0, -1)
       end
+    end
+
+    it 'should put the job back if parsing it raises an exception' do
+      retri = Sidekiq::RetrySet.new
+      retri.schedule (Time.now - 60).to_f, @error_1
+
+      poller = Sidekiq::Scheduled::Poller.new
+
+      Sidekiq.stub(:load_json, proc { assert_equal(0, retri.size); 0/0 }) do
+        assert_equal 1, retri.size
+        poller.poll
+        assert_equal 1, retri.size
+      end
+
+      poller.terminate
     end
   end
 end
